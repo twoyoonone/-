@@ -44,7 +44,7 @@
     min-height: 100vh;
     padding: 24px 16px 48px;
   }
-  main { max-width: 880px; margin: 0 auto; }
+  main { max-width: 1080px; margin: 0 auto; }
   button { font: inherit; color: inherit; }
 
   .bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
@@ -72,7 +72,25 @@
   .delta small { color: var(--muted); font-weight: 400; margin-left: 8px; }
 
   /* 캔들 차트 */
-  .panel { margin-top: 16px; padding: 14px 14px 10px; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 16px; }
+  .panel { padding: 14px 14px 10px; min-width: 0; }
+
+  /* 지표 요약 (옆 패널) */
+  .side { padding: 16px; font-size: .82rem; }
+  .side h2 { margin: 0 0 10px; font-size: .95rem; font-weight: 700; }
+  .side h2 small { margin-left: 6px; color: var(--muted); font-weight: 400; font-size: .75rem; }
+  .verdict { padding: 10px 12px; border-radius: 10px; background: var(--bg); margin-bottom: 8px; }
+  .verdict b { display: block; font-size: 1.15rem; line-height: 1.3; }
+  .verdict span { color: var(--muted); font-size: .76rem; }
+  .sig { padding: 8px 0; border-top: 1px solid var(--line); }
+  .sig .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .sig .nm { font-weight: 500; }
+  .sig .desc { color: var(--muted); font-size: .76rem; margin-top: 2px; }
+  .tag { flex: none; padding: 1px 8px; border-radius: 999px; font-size: .72rem; font-weight: 500; border: 1px solid currentColor; }
+  .t-up { color: var(--rise); } .t-down { color: var(--fall); } .t-mid { color: var(--muted); }
+  .levels { padding: 8px 0 0; border-top: 1px solid var(--line); color: var(--muted); font-size: .76rem; }
+  .levels b { color: var(--ink); font-weight: 500; }
+  .warn { margin: 10px 0 0; padding-top: 8px; border-top: 1px solid var(--line); color: var(--muted); font-size: .72rem; line-height: 1.45; }
   .tools { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
   .tabs, .zoom { display: inline-flex; gap: 6px; }
   .tabs button, .zoom button {
@@ -112,6 +130,7 @@
 
   footer { margin-top: 20px; font-size: .78rem; color: var(--muted); }
 
+  @media (min-width: 980px) { .layout { grid-template-columns: minmax(0, 1fr) 280px; align-items: start; } }
   @media (min-width: 560px) { dl { grid-template-columns: repeat(4, 1fr); } .panel { padding: 16px 18px 12px; } .info { grid-template-columns: repeat(4, minmax(0, 1fr)); min-height: 5em; } }
   @media (prefers-reduced-motion: reduce) { .price { transition: none; } }
 </style>
@@ -130,6 +149,7 @@
     <div class="delta" id="delta">전일 대비 –</div>
   </section>
 
+  <div class="layout">
   <section class="card panel" aria-label="캔들 차트">
     <div class="tools">
       <div class="tabs" role="tablist" aria-label="봉 단위">
@@ -150,6 +170,13 @@
     </div>
     <div class="chart-note">좌우로 끌어서 이동 · 눌러서 해당 봉의 상세 보기 · 빨강 = 상승, 파랑 = 하락</div>
   </section>
+
+  <aside class="card side" aria-label="지표 요약">
+    <h2>지표 요약<small>일봉 기준</small></h2>
+    <div id="ai-body"><div class="levels">분석할 데이터를 불러오는 중…</div></div>
+    <p class="warn">과거 가격으로 계산한 참고용 지표예요. 매수·매도 시점을 알려주는 것이 아니며, 투자 판단과 그 결과의 책임은 본인에게 있어요.</p>
+  </aside>
+  </div>
 
   <dl>
     <div><dt>고가</dt><dd class="hi" id="high">–</dd></div>
@@ -234,6 +261,8 @@
     document.title = nf.format(price) + "원 · 비트코인";
 
     liveUpdate(price);
+    lastTick = t;
+    queueAnalysis();
   }
 
   function uuid() {
@@ -374,6 +403,7 @@
       const data = normalize(await fetchCandles(unit));
       if (my !== reqId) return;
       cache[unit] = { data, at: Date.now() };
+      if (unit === "days") queueAnalysis();
       setCandles(data);
       showMsg(data.length ? null : "표시할 캔들이 없습니다.");
       schedule();
@@ -689,6 +719,151 @@
 
   // 5분마다 캔들을 새로 받아 새 봉 생성/보정
   setInterval(() => load(tf, true), 5 * 60 * 1000);
+
+
+  /* ───────── 지표 요약 (일봉 기준 참고 지표) ───────── */
+  const aiBody = document.getElementById("ai-body");
+  let lastTick = null, aiTimer = null;
+
+  function queueAnalysis() {
+    if (aiTimer) return;
+    aiTimer = setTimeout(() => { aiTimer = null; renderAnalysis(); }, 1500);
+  }
+
+  function smaAt(arr, p, i) {
+    if (i < p - 1) return null;
+    let s = 0;
+    for (let j = i - p + 1; j <= i; j++) s += arr[j];
+    return s / p;
+  }
+  function emaSeries(arr, p) {
+    const out = new Array(arr.length).fill(null);
+    if (arr.length < p) return out;
+    const k = 2 / (p + 1);
+    let prev = 0;
+    for (let i = 0; i < p; i++) prev += arr[i];
+    prev /= p; out[p - 1] = prev;
+    for (let i = p; i < arr.length; i++) { prev = arr[i] * k + prev * (1 - k); out[i] = prev; }
+    return out;
+  }
+  function rsiWilder(c, p) {
+    if (c.length <= p) return null;
+    let g = 0, l = 0;
+    for (let i = 1; i <= p; i++) { const d = c[i] - c[i - 1]; if (d >= 0) g += d; else l -= d; }
+    g /= p; l /= p;
+    for (let i = p + 1; i < c.length; i++) {
+      const d = c[i] - c[i - 1];
+      g = (g * (p - 1) + (d > 0 ? d : 0)) / p;
+      l = (l * (p - 1) + (d < 0 ? -d : 0)) / p;
+    }
+    return l === 0 ? 100 : 100 - 100 / (1 + g / l);
+  }
+  const pct = (v) => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(1) + "%";
+  const sigHTML = (name, tag, cls, desc) =>
+    '<div class="sig"><div class="row"><span class="nm">' + name + '</span><span class="tag ' + cls + '">' + tag +
+    '</span></div><div class="desc">' + desc + "</div></div>";
+
+  function renderAnalysis() {
+    const d = cache.days;
+    if (!d || d.data.length < 40) {
+      aiBody.innerHTML = '<div class="levels">' + (d ? "분석에 필요한 일봉 데이터가 부족해요." : "일봉 데이터를 불러오는 중…") + "</div>";
+      return;
+    }
+    const k = d.data;
+    const n = k.length;
+    const closes = k.map((x) => x.c);
+    if (lastPrice !== null) closes[n - 1] = lastPrice;
+    const price = closes[n - 1];
+
+    const ma5 = smaAt(closes, 5, n - 1), ma20 = smaAt(closes, 20, n - 1), ma60 = smaAt(closes, 60, n - 1);
+    const rsi = rsiWilder(closes, 14);
+
+    // MACD(12, 26, 9)
+    const e12 = emaSeries(closes, 12), e26 = emaSeries(closes, 26);
+    const macd = closes.map((_, i) => (e26[i] === null ? null : e12[i] - e26[i]));
+    const first = macd.findIndex((v) => v !== null);
+    const sigLine = emaSeries(macd.slice(first), 9);
+    const hist = sigLine.map((v, j) => (v === null ? null : macd[first + j] - v));
+    const h1 = hist[hist.length - 1], h0 = hist[hist.length - 2];
+
+    // 볼린저밴드(20, 2σ)
+    let bbPos = null;
+    if (ma20 !== null) {
+      let v = 0;
+      for (let i = n - 20; i < n; i++) v += (closes[i] - ma20) ** 2;
+      const sd = Math.sqrt(v / 20);
+      const up = ma20 + 2 * sd, lo = ma20 - 2 * sd;
+      bbPos = up === lo ? 0.5 : (price - lo) / (up - lo);
+    }
+
+    // 골든/데드 크로스 (최근 5일, MA5 vs MA20)
+    let cross = 0;
+    for (let i = n - 5; i < n; i++) {
+      const a0 = smaAt(closes, 5, i - 1) - smaAt(closes, 20, i - 1);
+      const a1 = smaAt(closes, 5, i) - smaAt(closes, 20, i);
+      if (a0 <= 0 && a1 > 0) cross = 1;
+      if (a0 >= 0 && a1 < 0) cross = -1;
+    }
+
+    const items = [];
+    let up = 0, down = 0, mid = 0;
+    const add = (name, dir, tag, desc) => {
+      if (dir > 0) up++; else if (dir < 0) down++; else mid++;
+      items.push(sigHTML(name, tag, dir > 0 ? "t-up" : dir < 0 ? "t-down" : "t-mid", desc));
+    };
+
+    // 1) 이동평균 배열
+    if (ma60 !== null) {
+      if (ma5 > ma20 && ma20 > ma60) add("이동평균 배열", 1, "상승", "5일 > 20일 > 60일 (정배열)");
+      else if (ma5 < ma20 && ma20 < ma60) add("이동평균 배열", -1, "하락", "5일 < 20일 < 60일 (역배열)");
+      else add("이동평균 배열", 0, "중립", "이동평균선이 엇갈려 있어요");
+    }
+    // 2) 20일선 대비 위치
+    if (ma20 !== null) {
+      const gap = (price / ma20 - 1) * 100;
+      add("20일선 대비", gap > 0 ? 1 : gap < 0 ? -1 : 0, gap > 0 ? "상승" : gap < 0 ? "하락" : "중립",
+        "현재가가 20일선보다 " + pct(gap) + (gap >= 0 ? " 위" : " 아래"));
+    }
+    // 3) RSI
+    if (rsi !== null) {
+      if (rsi >= 70) add("RSI(14)", -1, "과열", rsi.toFixed(1) + " · 70 이상은 단기 과열로 해석해요");
+      else if (rsi <= 30) add("RSI(14)", 1, "침체", rsi.toFixed(1) + " · 30 이하는 단기 침체로 해석해요");
+      else add("RSI(14)", 0, "중립", rsi.toFixed(1) + " · 30~70 보통 구간");
+    }
+    // 4) MACD
+    if (h1 !== null && h1 !== undefined) {
+      const rising = h0 !== null && h0 !== undefined && h1 > h0;
+      if (h1 > 0) add("MACD", 1, "상승", "시그널선 위 · 히스토그램 " + (rising ? "증가" : "감소") + " 중");
+      else add("MACD", -1, "하락", "시그널선 아래 · 히스토그램 " + (rising ? "증가" : "감소") + " 중");
+    }
+    // 5) 볼린저밴드
+    if (bbPos !== null) {
+      if (bbPos >= 1) add("볼린저밴드", -1, "상단", "상단 밴드 위 · 단기 과열 가능");
+      else if (bbPos <= 0) add("볼린저밴드", 1, "하단", "하단 밴드 아래 · 단기 낙폭 과대 가능");
+      else add("볼린저밴드", 0, "중립", "밴드 안 " + Math.round(bbPos * 100) + "% 위치 (0=하단, 100=상단)");
+    }
+    // 6) 골든/데드 크로스
+    add("5·20일선 교차", cross, cross > 0 ? "골든" : cross < 0 ? "데드" : "없음",
+      cross > 0 ? "최근 5일 안에 5일선이 20일선을 위로 돌파" : cross < 0 ? "최근 5일 안에 5일선이 20일선을 아래로 이탈" : "최근 5일 안에 교차 없음");
+
+    const diff = up - down;
+    const label = diff >= 2 ? "상승 신호 우세" : diff <= -2 ? "하락 신호 우세" : "방향 뚜렷하지 않음";
+    const color = diff >= 2 ? "var(--rise)" : diff <= -2 ? "var(--fall)" : "var(--muted)";
+
+    // 최근 20일 고점/저점, 52주 대비
+    let hi20 = -Infinity, lo20 = Infinity;
+    for (let i = n - 20; i < n; i++) { hi20 = Math.max(hi20, k[i].h); lo20 = Math.min(lo20, k[i].l); }
+    hi20 = Math.max(hi20, price); lo20 = Math.min(lo20, price);
+    let lv = '<div class="levels">최근 20일 고점 <b>' + fmtP(hi20) + "</b><br>최근 20일 저점 <b>" + fmtP(lo20) + "</b>";
+    if (lastTick && lastTick.highest_52_week_price) {
+      lv += "<br>52주 고점 대비 <b>" + pct((price / lastTick.highest_52_week_price - 1) * 100) + "</b>";
+    }
+    lv += "</div>";
+
+    aiBody.innerHTML =
+      '<div class="verdict"><b style="color:' + color + '">' + label + "</b><span>지표 " + items.length +
+      "개 중 상승 " + up + " · 하락 " + down + " · 중립 " + mid + "</span></div>" + items.join("") + lv;
+  }
 
   resize();
   load("days");
