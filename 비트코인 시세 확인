@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>비트코인 실시간 시세</title>
+<meta name="description" content="업비트 WebSocket으로 받는 KRW-BTC 실시간 시세">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>₿</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #eef1f5;
+    --panel: #ffffff;
+    --ink: #14181f;
+    --muted: #6b7280;
+    --line: #d9dee6;
+    --rise: #e5342e;   /* 한국 시장 관례: 상승 = 빨강 */
+    --fall: #1c5fd6;   /* 하락 = 파랑 */
+    --even: #6b7280;
+    --trend: var(--even);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1218;
+      --panel: #171b23;
+      --ink: #eef1f5;
+      --muted: #8b93a1;
+      --line: #272d38;
+      --rise: #ff5a52;
+      --fall: #5b95ff;
+      --even: #8b93a1;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "IBM Plex Sans KR", system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.5;
+    min-height: 100vh;
+    padding: 24px 16px 48px;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+
+  .bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+  .pair { font-weight: 700; font-size: 1rem; }
+  .pair span { color: var(--muted); font-weight: 400; margin-left: 6px; }
+  .status { display: inline-flex; align-items: center; gap: 8px; font-size: .85rem; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .status[data-state="live"] .dot { background: #1fa971; }
+  .status[data-state="connecting"] .dot, .status[data-state="retry"] .dot { background: #e0a100; }
+
+  .quote { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 24px 24px 8px; }
+  .price {
+    font-size: clamp(2.25rem, 9vw, 4rem);
+    font-weight: 700;
+    letter-spacing: -.02em;
+    line-height: 1.1;
+    color: var(--trend);
+    transition: color .6s ease-out;
+  }
+  .price .unit { font-size: .4em; font-weight: 500; color: var(--muted); margin-left: .35em; letter-spacing: 0; }
+  .price.tick-up { color: var(--rise); transition: none; }
+  .price.tick-down { color: var(--fall); transition: none; }
+  .delta { margin-top: 6px; font-size: 1.05rem; font-weight: 500; color: var(--trend); }
+  .delta small { color: var(--muted); font-weight: 400; margin-left: 8px; }
+
+  .chart { margin: 20px -24px 0; border-top: 1px solid var(--line); }
+  .chart svg { display: block; width: 100%; height: 140px; }
+  .chart path { fill: none; stroke: var(--trend); stroke-width: 1.75; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+  .chart .empty { fill: var(--muted); font-size: 13px; }
+  .chart-note { padding: 6px 24px 14px; font-size: .78rem; color: var(--muted); }
+
+  dl { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; margin: 16px 0 0; background: var(--line); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  dl > div { background: var(--panel); padding: 14px 18px; }
+  dt { font-size: .8rem; color: var(--muted); }
+  dd { margin: 2px 0 0; font-size: 1.05rem; font-weight: 500; }
+  dd.hi { color: var(--rise); }
+  dd.lo { color: var(--fall); }
+  dd small { display: block; font-size: .75rem; color: var(--muted); font-weight: 400; }
+
+  footer { margin-top: 20px; font-size: .78rem; color: var(--muted); }
+  footer a { color: inherit; }
+
+  @media (min-width: 560px) { dl { grid-template-columns: repeat(3, 1fr); } }
+  @media (prefers-reduced-motion: reduce) { .price { transition: none; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="bar">
+    <div class="pair">비트코인<span>KRW-BTC</span></div>
+    <div class="status" id="status" data-state="connecting" role="status">
+      <span class="dot"></span><span id="status-text">연결 중…</span>
+    </div>
+  </div>
+
+  <section class="quote" aria-label="현재가">
+    <div class="price" id="price">–<span class="unit">KRW</span></div>
+    <div class="delta" id="delta">전일 대비 –</div>
+
+    <div class="chart">
+      <svg id="chart" viewBox="0 0 600 140" preserveAspectRatio="none" role="img" aria-label="접속 후 현재가 추이">
+        <text class="empty" x="300" y="74" text-anchor="middle">체결 데이터를 기다리는 중…</text>
+      </svg>
+      <div class="chart-note">이 페이지를 연 뒤 수신한 체결가 추이 (최근 300건)</div>
+    </div>
+  </section>
+
+  <dl>
+    <div><dt>고가</dt><dd class="hi" id="high">–</dd></div>
+    <div><dt>저가</dt><dd class="lo" id="low">–</dd></div>
+    <div><dt>전일 종가</dt><dd id="prev">–</dd></div>
+    <div><dt>24시간 거래대금</dt><dd id="value24">–</dd></div>
+    <div><dt>24시간 거래량</dt><dd id="vol24">–</dd></div>
+    <div><dt>마지막 갱신</dt><dd id="updated">–</dd></div>
+    <div><dt>52주 최고</dt><dd id="h52">–</dd></div>
+    <div><dt>52주 최저</dt><dd id="l52">–</dd></div>
+  </dl>
+
+  <footer>
+    데이터 출처: 업비트 Open API (WebSocket · 현재가). 투자 판단의 근거로 사용하지 마세요.
+  </footer>
+</main>
+
+<script>
+(() => {
+  const CODE = "KRW-BTC";
+  const WS_URL = "wss://api.upbit.com/websocket/v1";
+  const MAX_POINTS = 300;
+
+  const $ = (id) => document.getElementById(id);
+  const el = {
+    status: $("status"), statusText: $("status-text"),
+    price: $("price"), delta: $("delta"), chart: $("chart"),
+    high: $("high"), low: $("low"), prev: $("prev"),
+    value24: $("value24"), vol24: $("vol24"), updated: $("updated"),
+    h52: $("h52"), l52: $("l52"),
+  };
+
+  const nf = new Intl.NumberFormat("ko-KR");
+  const krw = (n) => nf.format(Math.round(n)) + "원";
+  const decoder = new TextDecoder();
+  const timeFmt = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+  let ws, retry = 0, pingTimer, retryTimer, lastPrice = null, flashTimer;
+  const points = [];
+
+  function setStatus(state, text) {
+    el.status.dataset.state = state;
+    el.statusText.textContent = text;
+  }
+
+  function trendColor(change) {
+    return change === "RISE" ? "var(--rise)" : change === "FALL" ? "var(--fall)" : "var(--even)";
+  }
+
+  function formatValue(won) {
+    // 거래대금: 억/조 단위로 표시
+    if (won >= 1e12) return (won / 1e12).toFixed(2) + "조원";
+    return nf.format(Math.round(won / 1e8)) + "억원";
+  }
+
+  function drawChart() {
+    if (points.length < 2) return;
+    const W = 600, H = 140, pad = 14;
+    const min = Math.min(...points), max = Math.max(...points);
+    const span = max - min || 1;
+    const step = W / (points.length - 1);
+    const d = points.map((p, i) => {
+      const x = (i * step).toFixed(1);
+      const y = (H - pad - ((p - min) / span) * (H - pad * 2)).toFixed(1);
+      return (i ? "L" : "M") + x + " " + y;
+    }).join(" ");
+    el.chart.innerHTML = '<path d="' + d + '"/>';
+  }
+
+  function render(t) {
+    const price = t.trade_price;
+    const color = trendColor(t.change);
+    document.documentElement.style.setProperty("--trend", color);
+
+    el.price.firstChild.nodeValue = nf.format(price);
+    if (lastPrice !== null && price !== lastPrice) {
+      el.price.classList.remove("tick-up", "tick-down");
+      void el.price.offsetWidth; // 애니메이션 재시작
+      el.price.classList.add(price > lastPrice ? "tick-up" : "tick-down");
+      clearTimeout(flashTimer);
+      flashTimer = setTimeout(() => el.price.classList.remove("tick-up", "tick-down"), 350);
+    }
+    lastPrice = price;
+
+    const sign = t.signed_change_price > 0 ? "+" : t.signed_change_price < 0 ? "−" : "";
+    const rate = (Math.abs(t.signed_change_rate) * 100).toFixed(2);
+    const arrow = t.change === "RISE" ? "▲" : t.change === "FALL" ? "▼" : "";
+    el.delta.innerHTML = arrow + " " + sign + nf.format(Math.abs(t.signed_change_price)) + "원 (" + sign + rate + "%)<small>전일 대비</small>";
+
+    el.high.textContent = krw(t.high_price);
+    el.low.textContent = krw(t.low_price);
+    el.prev.textContent = krw(t.prev_closing_price);
+    el.value24.textContent = formatValue(t.acc_trade_price_24h);
+    el.vol24.textContent = t.acc_trade_volume_24h.toFixed(2) + " BTC";
+    el.h52.innerHTML = krw(t.highest_52_week_price) + "<small>" + t.highest_52_week_date + "</small>";
+    el.l52.innerHTML = krw(t.lowest_52_week_price) + "<small>" + t.lowest_52_week_date + "</small>";
+    el.updated.textContent = timeFmt.format(new Date(t.timestamp));
+
+    document.title = nf.format(price) + "원 · 비트코인";
+
+    points.push(price);
+    if (points.length > MAX_POINTS) points.shift();
+    drawChart();
+  }
+
+  function uuid() {
+    return (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()) + Math.random().toString(16).slice(2);
+  }
+
+  function connect() {
+    setStatus("connecting", "연결 중…");
+    ws = new WebSocket(WS_URL);
+    ws.binaryType = "arraybuffer"; // 업비트는 바이너리 프레임으로 전송
+
+    ws.onopen = () => {
+      retry = 0;
+      ws.send(JSON.stringify([
+        { ticket: uuid() },
+        { type: "ticker", codes: [CODE] },
+        { format: "DEFAULT" },
+      ]));
+      setStatus("live", "실시간");
+      // 120초 유휴 시 서버가 연결을 끊으므로 주기적으로 PING 전송
+      clearInterval(pingTimer);
+      pingTimer = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) ws.send("PING");
+      }, 60000);
+    };
+
+    ws.onmessage = (e) => {
+      const text = typeof e.data === "string" ? e.data : decoder.decode(e.data);
+      let msg;
+      try { msg = JSON.parse(text); } catch { return; }
+      if (msg.error) { console.error("Upbit error:", msg.error); return; }
+      if (msg.type === "ticker" && msg.code === CODE) render(msg);
+    };
+
+    ws.onclose = () => {
+      clearInterval(pingTimer);
+      const delay = Math.min(1000 * 2 ** retry++, 15000); // 접속 횟수 제한(초당 5회) 보호
+      setStatus("retry", "재연결 중…");
+      clearTimeout(retryTimer);
+      retryTimer = setTimeout(connect, delay);
+    };
+
+    ws.onerror = () => ws.close();
+  }
+
+  connect();
+})();
+</script>
+</body>
+</html>
