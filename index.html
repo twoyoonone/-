@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>비트코인 실시간 시세</title>
-<meta name="description" content="업비트 WebSocket으로 받는 KRW-BTC 실시간 시세">
+<meta name="description" content="업비트 API로 보는 KRW-BTC 실시간 시세와 일·주·월봉 캔들 차트">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>₿</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -44,7 +44,8 @@
     min-height: 100vh;
     padding: 24px 16px 48px;
   }
-  main { max-width: 720px; margin: 0 auto; }
+  main { max-width: 880px; margin: 0 auto; }
+  button { font: inherit; color: inherit; }
 
   .bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
   .pair { font-weight: 700; font-size: 1rem; }
@@ -54,7 +55,8 @@
   .status[data-state="live"] .dot { background: #1fa971; }
   .status[data-state="connecting"] .dot, .status[data-state="retry"] .dot { background: #e0a100; }
 
-  .quote { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 24px 24px 8px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
+  .quote { padding: 24px; }
   .price {
     font-size: clamp(2.25rem, 9vw, 4rem);
     font-weight: 700;
@@ -69,11 +71,36 @@
   .delta { margin-top: 6px; font-size: 1.05rem; font-weight: 500; color: var(--trend); }
   .delta small { color: var(--muted); font-weight: 400; margin-left: 8px; }
 
-  .chart { margin: 20px -24px 0; border-top: 1px solid var(--line); }
-  .chart svg { display: block; width: 100%; height: 140px; }
-  .chart path { fill: none; stroke: var(--trend); stroke-width: 1.75; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
-  .chart .empty { fill: var(--muted); font-size: 13px; }
-  .chart-note { padding: 6px 24px 14px; font-size: .78rem; color: var(--muted); }
+  /* 캔들 차트 */
+  .panel { margin-top: 16px; padding: 14px 14px 10px; }
+  .tools { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .tabs, .zoom { display: inline-flex; gap: 6px; }
+  .tabs button, .zoom button {
+    min-height: 36px; padding: 0 14px;
+    border: 1px solid var(--line); border-radius: 8px;
+    background: var(--panel); cursor: pointer; font-size: .9rem;
+  }
+  .zoom button { padding: 0 12px; font-size: 1.05rem; line-height: 1; }
+  .tabs button[aria-selected="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); font-weight: 500; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--fall); outline-offset: 2px; }
+
+  .mas { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 12px 0 4px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: .84rem; cursor: pointer; min-height: 28px; }
+  .chip input { margin: 0; width: 16px; height: 16px; }
+
+  .info { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 12px; margin: 8px 0 6px; font-size: .8rem; color: var(--muted); min-height: 9.4em; align-content: start; }
+  .info > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .info b { color: var(--ink); font-weight: 500; }
+  .info .up, .info .up b { color: var(--rise); }
+  .info .down, .info .down b { color: var(--fall); }
+
+  .chartwrap { position: relative; width: 100%; }
+  .chartwrap canvas { display: block; width: 100%; touch-action: pan-y; cursor: crosshair; }
+  .msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 24px; color: var(--muted); font-size: .9rem; pointer-events: none; }
+  .msg[hidden] { display: none; }
+  .msg > div { max-width: 420px; }
+  .msg button { pointer-events: auto; margin-top: 12px; min-height: 36px; padding: 0 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); cursor: pointer; }
+  .chart-note { margin-top: 6px; font-size: .75rem; color: var(--muted); }
 
   dl { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; margin: 16px 0 0; background: var(--line); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
   dl > div { background: var(--panel); padding: 14px 18px; }
@@ -84,9 +111,8 @@
   dd small { display: block; font-size: .75rem; color: var(--muted); font-weight: 400; }
 
   footer { margin-top: 20px; font-size: .78rem; color: var(--muted); }
-  footer a { color: inherit; }
 
-  @media (min-width: 560px) { dl { grid-template-columns: repeat(3, 1fr); } }
+  @media (min-width: 560px) { dl { grid-template-columns: repeat(4, 1fr); } .panel { padding: 16px 18px 12px; } .info { grid-template-columns: repeat(4, minmax(0, 1fr)); min-height: 5em; } }
   @media (prefers-reduced-motion: reduce) { .price { transition: none; } }
 </style>
 </head>
@@ -99,16 +125,30 @@
     </div>
   </div>
 
-  <section class="quote" aria-label="현재가">
+  <section class="card quote" aria-label="현재가">
     <div class="price" id="price">–<span class="unit">KRW</span></div>
     <div class="delta" id="delta">전일 대비 –</div>
+  </section>
 
-    <div class="chart">
-      <svg id="chart" viewBox="0 0 600 140" preserveAspectRatio="none" role="img" aria-label="접속 후 현재가 추이">
-        <text class="empty" x="300" y="74" text-anchor="middle">체결 데이터를 기다리는 중…</text>
-      </svg>
-      <div class="chart-note">이 페이지를 연 뒤 수신한 체결가 추이 (최근 300건)</div>
+  <section class="card panel" aria-label="캔들 차트">
+    <div class="tools">
+      <div class="tabs" role="tablist" aria-label="봉 단위">
+        <button role="tab" data-tf="days" aria-selected="true">일봉</button>
+        <button role="tab" data-tf="weeks" aria-selected="false">주봉</button>
+        <button role="tab" data-tf="months" aria-selected="false">월봉</button>
+      </div>
+      <div class="zoom">
+        <button id="zin" aria-label="차트 확대">＋</button>
+        <button id="zout" aria-label="차트 축소">－</button>
+      </div>
     </div>
+    <div class="mas" id="mas" aria-label="이동평균선 선택"></div>
+    <div class="info" id="info" aria-live="off"></div>
+    <div class="chartwrap" id="wrap">
+      <canvas id="cv" role="img" aria-label="비트코인 캔들 차트"></canvas>
+      <div class="msg" id="msg"><div>캔들 데이터를 불러오는 중…</div></div>
+    </div>
+    <div class="chart-note">좌우로 끌어서 이동 · 눌러서 해당 봉의 상세 보기 · 빨강 = 상승, 파랑 = 하락</div>
   </section>
 
   <dl>
@@ -123,7 +163,7 @@
   </dl>
 
   <footer>
-    데이터 출처: 업비트 Open API (WebSocket · 현재가). 투자 판단의 근거로 사용하지 마세요.
+    데이터 출처: 업비트 Open API (WebSocket 현재가 · REST 캔들). 투자 판단의 근거로 사용하지 마세요.
   </footer>
 </main>
 
@@ -131,15 +171,15 @@
 (() => {
   const CODE = "KRW-BTC";
   const WS_URL = "wss://api.upbit.com/websocket/v1";
-  const MAX_POINTS = 300;
 
   const $ = (id) => document.getElementById(id);
   const el = {
     status: $("status"), statusText: $("status-text"),
-    price: $("price"), delta: $("delta"), chart: $("chart"),
+    price: $("price"), delta: $("delta"),
     high: $("high"), low: $("low"), prev: $("prev"),
     value24: $("value24"), vol24: $("vol24"), updated: $("updated"),
     h52: $("h52"), l52: $("l52"),
+    mas: $("mas"), info: $("info"), wrap: $("wrap"), cv: $("cv"), msg: $("msg"),
   };
 
   const nf = new Intl.NumberFormat("ko-KR");
@@ -147,47 +187,31 @@
   const decoder = new TextDecoder();
   const timeFmt = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
+  /* ───────── 실시간 현재가 (WebSocket) ───────── */
   let ws, retry = 0, pingTimer, retryTimer, lastPrice = null, flashTimer;
-  const points = [];
+  let trendName = "even";
 
   function setStatus(state, text) {
     el.status.dataset.state = state;
     el.statusText.textContent = text;
   }
-
-  function trendColor(change) {
-    return change === "RISE" ? "var(--rise)" : change === "FALL" ? "var(--fall)" : "var(--even)";
+  function trendVar(change) {
+    return change === "RISE" ? "rise" : change === "FALL" ? "fall" : "even";
   }
-
   function formatValue(won) {
-    // 거래대금: 억/조 단위로 표시
     if (won >= 1e12) return (won / 1e12).toFixed(2) + "조원";
     return nf.format(Math.round(won / 1e8)) + "억원";
   }
 
-  function drawChart() {
-    if (points.length < 2) return;
-    const W = 600, H = 140, pad = 14;
-    const min = Math.min(...points), max = Math.max(...points);
-    const span = max - min || 1;
-    const step = W / (points.length - 1);
-    const d = points.map((p, i) => {
-      const x = (i * step).toFixed(1);
-      const y = (H - pad - ((p - min) / span) * (H - pad * 2)).toFixed(1);
-      return (i ? "L" : "M") + x + " " + y;
-    }).join(" ");
-    el.chart.innerHTML = '<path d="' + d + '"/>';
-  }
-
   function render(t) {
     const price = t.trade_price;
-    const color = trendColor(t.change);
-    document.documentElement.style.setProperty("--trend", color);
+    trendName = trendVar(t.change);
+    document.documentElement.style.setProperty("--trend", "var(--" + trendName + ")");
 
     el.price.firstChild.nodeValue = nf.format(price);
     if (lastPrice !== null && price !== lastPrice) {
       el.price.classList.remove("tick-up", "tick-down");
-      void el.price.offsetWidth; // 애니메이션 재시작
+      void el.price.offsetWidth;
       el.price.classList.add(price > lastPrice ? "tick-up" : "tick-down");
       clearTimeout(flashTimer);
       flashTimer = setTimeout(() => el.price.classList.remove("tick-up", "tick-down"), 350);
@@ -207,12 +231,9 @@
     el.h52.innerHTML = krw(t.highest_52_week_price) + "<small>" + t.highest_52_week_date + "</small>";
     el.l52.innerHTML = krw(t.lowest_52_week_price) + "<small>" + t.lowest_52_week_date + "</small>";
     el.updated.textContent = timeFmt.format(new Date(t.timestamp));
-
     document.title = nf.format(price) + "원 · 비트코인";
 
-    points.push(price);
-    if (points.length > MAX_POINTS) points.shift();
-    drawChart();
+    liveUpdate(price);
   }
 
   function uuid() {
@@ -232,13 +253,9 @@
         { format: "DEFAULT" },
       ]));
       setStatus("live", "실시간");
-      // 120초 유휴 시 서버가 연결을 끊으므로 주기적으로 PING 전송
       clearInterval(pingTimer);
-      pingTimer = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) ws.send("PING");
-      }, 60000);
+      pingTimer = setInterval(() => { if (ws.readyState === WebSocket.OPEN) ws.send("PING"); }, 60000);
     };
-
     ws.onmessage = (e) => {
       const text = typeof e.data === "string" ? e.data : decoder.decode(e.data);
       let msg;
@@ -246,18 +263,435 @@
       if (msg.error) { console.error("Upbit error:", msg.error); return; }
       if (msg.type === "ticker" && msg.code === CODE) render(msg);
     };
-
     ws.onclose = () => {
       clearInterval(pingTimer);
-      const delay = Math.min(1000 * 2 ** retry++, 15000); // 접속 횟수 제한(초당 5회) 보호
+      const delay = Math.min(1000 * 2 ** retry++, 15000);
       setStatus("retry", "재연결 중…");
       clearTimeout(retryTimer);
       retryTimer = setTimeout(connect, delay);
     };
-
     ws.onerror = () => ws.close();
   }
 
+  /* ───────── 캔들 차트 ───────── */
+  const TF_LABEL = { days: "일봉", weeks: "주봉", months: "월봉" };
+  const MAS = [
+    { p: 5,   c: "#e0a100", on: true },
+    { p: 20,  c: "#1fa971", on: true },
+    { p: 60,  c: "#9b59d0", on: true },
+    { p: 120, c: "#14a3b8", on: true },
+  ];
+  const ZOOM_STEPS = [30, 45, 60, 90, 120, 160, 200];
+  const PAD = { top: 8, right: 66, bottom: 22 };
+
+  let tf = "days";
+  let candles = [];               // 오래된 → 최신 순
+  const cache = {};               // { days: {data, at}, ... }
+  const view = { count: 90, offset: 0 };   // offset: 오른쪽 끝에서 몇 개 떨어져 있는지
+  let hover = null;               // { idx, y }
+  let L = null;                   // 마지막으로 그린 레이아웃
+  let size = { w: 0, h: 0, dpr: 1 };
+  let reqId = 0, retryCandle, queued = false;
+
+  const ctx = el.cv.getContext("2d");
+
+  function fmtP(v) { return nf.format(Math.round(v)); }
+  function fmtAxis(v) { return v >= 1e7 ? nf.format(Math.round(v / 1e4)) + "만" : nf.format(Math.round(v)); }
+  function dateShort(t) {
+    const y = t.slice(2, 4), m = t.slice(5, 7), d = t.slice(8, 10);
+    return tf === "months" ? y + "." + m : m + "." + d;
+  }
+  function dateFull(t) {
+    return tf === "months" ? t.slice(0, 7) : t.slice(0, 10) + (tf === "weeks" ? " 주" : "");
+  }
+
+  function normalize(raw) {
+    return raw.map((k) => ({
+      t: k.candle_date_time_kst,
+      o: k.opening_price, h: k.high_price, l: k.low_price, c: k.trade_price,
+      v: k.candle_acc_trade_volume,
+    })).reverse(); // API는 최신순 → 오름차순으로 뒤집기
+  }
+
+  function computeMA() {
+    const n = candles.length;
+    for (const m of MAS) {
+      const arr = new Array(n).fill(null);
+      let sum = 0;
+      for (let i = 0; i < n; i++) {
+        sum += candles[i].c;
+        if (i >= m.p) sum -= candles[i - m.p].c;
+        if (i >= m.p - 1) arr[i] = sum / m.p;
+      }
+      m.v = arr;
+    }
+  }
+
+  function setCandles(data) { candles = data; computeMA(); }
+
+  async function fetchCandles(unit) {
+    const qs = "market=" + CODE + "&count=200";
+    const why = {};
+    // 1순위: 같은 사이트의 서버리스 함수 (브라우저 CORS 제한 없음)
+    try {
+      const r = await fetch("/api/candles?unit=" + unit + "&" + qs);
+      if (r.ok) {
+        const j = await r.json();
+        if (Array.isArray(j)) return j;
+        why.proxy = "응답 형식 오류";
+      } else {
+        why.proxy = "HTTP " + r.status;
+      }
+    } catch (e) { why.proxy = "연결 실패"; }
+    // 2순위: 업비트 직접 호출 (업비트가 브라우저 접근을 허용할 때만 가능)
+    try {
+      const r2 = await fetch("https://api.upbit.com/v1/candles/" + unit + "?" + qs);
+      if (r2.ok) {
+        const j2 = await r2.json();
+        if (Array.isArray(j2)) return j2;
+      }
+      why.direct = "HTTP " + r2.status;
+    } catch (e) { why.direct = "브라우저가 차단(CORS)"; }
+    const err = new Error("캔들 불러오기 실패");
+    err.why = why;
+    throw err;
+  }
+
+  async function load(unit, silent) {
+    tf = unit;
+    clearTimeout(retryCandle);
+    for (const b of document.querySelectorAll(".tabs button")) {
+      b.setAttribute("aria-selected", String(b.dataset.tf === unit));
+    }
+    if (!silent) {
+      hover = null; view.offset = 0;
+      if (cache[unit]) { setCandles(cache[unit].data); showMsg(null); }
+      else { setCandles([]); showMsg("캔들 데이터를 불러오는 중…"); }
+      schedule();
+    }
+    const my = ++reqId;
+    try {
+      const data = normalize(await fetchCandles(unit));
+      if (my !== reqId) return;
+      cache[unit] = { data, at: Date.now() };
+      setCandles(data);
+      showMsg(data.length ? null : "표시할 캔들이 없습니다.");
+      schedule();
+    } catch (err) {
+      if (my !== reqId) return;
+      console.error(err);
+      if (!candles.length) showMsg(errorText(err), true);
+      retryCandle = setTimeout(() => load(tf, true), 15000);
+      schedule();
+    }
+  }
+
+  function errorText(err) {
+    const w = (err && err.why) || {};
+    if (w.proxy === "HTTP 404") {
+      return "서버 함수를 찾지 못했어요. GitHub 저장소에 api 폴더 안의 candles.js 파일이 있는지 확인해 주세요.";
+    }
+    return "캔들 데이터를 불러오지 못했어요. (서버 함수: " + (w.proxy || "-") + " / 업비트 직접: " + (w.direct || "-") + ") 15초마다 자동으로 다시 시도합니다.";
+  }
+
+  function showMsg(text, withRetry) {
+    el.msg.hidden = !text;
+    if (!text) return;
+    el.msg.innerHTML = "";
+    const d = document.createElement("div");
+    d.textContent = text;
+    if (withRetry) {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = "지금 다시 시도";
+      b.addEventListener("click", () => load(tf));
+      d.append(document.createElement("br"), b);
+    }
+    el.msg.append(d);
+  }
+
+  // 실시간 가격으로 가장 최근 봉을 갱신
+  function liveUpdate(price) {
+    if (!candles.length) return;
+    const last = candles[candles.length - 1];
+    last.c = price;
+    if (price > last.h) last.h = price;
+    if (price < last.l) last.l = price;
+    computeMA();
+    schedule();
+  }
+
+  function schedule() {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => { queued = false; draw(); updateInfo(); });
+  }
+
+  function resize() {
+    const w = Math.floor(el.wrap.clientWidth);
+    const h = Math.round(Math.min(460, Math.max(320, w * 0.72)));
+    const dpr = window.devicePixelRatio || 1;
+    size = { w, h, dpr };
+    el.cv.width = Math.round(w * dpr);
+    el.cv.height = Math.round(h * dpr);
+    el.cv.style.height = h + "px";
+    schedule();
+  }
+
+  function niceStep(range, target) {
+    const raw = range / target;
+    const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    const norm = raw / mag;
+    const m = norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10;
+    return m * mag;
+  }
+
+  function draw() {
+    const { w: W, h: H, dpr } = size;
+    if (!W) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    const n = candles.length;
+    if (!n) { L = null; return; }
+
+    const cs = getComputedStyle(document.documentElement);
+    const col = {
+      rise: cs.getPropertyValue("--rise").trim(),
+      fall: cs.getPropertyValue("--fall").trim(),
+      even: cs.getPropertyValue("--even").trim(),
+      muted: cs.getPropertyValue("--muted").trim(),
+      line: cs.getPropertyValue("--line").trim(),
+      ink: cs.getPropertyValue("--ink").trim(),
+      panel: cs.getPropertyValue("--panel").trim(),
+    };
+    const upDown = (k) => (k.c > k.o ? col.rise : k.c < k.o ? col.fall : col.even);
+
+    const count = Math.min(view.count, n);
+    const maxOffset = Math.max(0, n - count);
+    view.offset = Math.max(0, Math.min(maxOffset, view.offset));
+    const end = n - view.offset;
+    const start = end - count;
+
+    const plotW = W - PAD.right;
+    const plotH = H - PAD.top - PAD.bottom;
+    const volH = Math.round(plotH * 0.18);
+    const priceH = plotH - volH - 8;
+    const slot = plotW / count;
+
+    let min = Infinity, max = -Infinity, vmax = 0;
+    for (let i = start; i < end; i++) {
+      const k = candles[i];
+      if (k.l < min) min = k.l;
+      if (k.h > max) max = k.h;
+      if (k.v > vmax) vmax = k.v;
+    }
+    if (max === min) { max += 1; min -= 1; }
+    const padv = (max - min) * 0.06;
+    min -= padv; max += padv;
+    const y = (p) => PAD.top + ((max - p) / (max - min)) * priceH;
+
+    L = { start, end, slot, plotW, priceH, min, max };
+
+    ctx.font = '11px "IBM Plex Sans KR", system-ui, sans-serif';
+    ctx.textBaseline = "middle";
+
+    // 가격 격자 + 오른쪽 축
+    const step = niceStep(max - min, 5);
+    ctx.lineWidth = 1;
+    for (let p = Math.ceil(min / step) * step; p <= max; p += step) {
+      const yy = Math.round(y(p)) + 0.5;
+      ctx.strokeStyle = col.line;
+      ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(plotW, yy); ctx.stroke();
+      ctx.fillStyle = col.muted; ctx.textAlign = "left";
+      ctx.fillText(fmtAxis(p), plotW + 6, yy);
+    }
+
+    // 거래량
+    const volBottom = PAD.top + plotH;
+    for (let i = start; i < end; i++) {
+      const k = candles[i];
+      const x = (i - start + 0.5) * slot;
+      const bw = Math.max(1, slot * 0.7);
+      const bh = vmax ? (k.v / vmax) * volH : 0;
+      ctx.globalAlpha = 0.45;
+      ctx.fillStyle = upDown(k);
+      ctx.fillRect(x - bw / 2, volBottom - bh, bw, bh);
+    }
+    ctx.globalAlpha = 1;
+
+    // 캔들
+    for (let i = start; i < end; i++) {
+      const k = candles[i];
+      const x = (i - start + 0.5) * slot;
+      const bw = Math.max(1, Math.floor(slot * 0.7));
+      const color = upDown(k);
+      ctx.strokeStyle = color; ctx.fillStyle = color;
+      ctx.lineWidth = 1;
+      const xx = Math.round(x) + 0.5;
+      ctx.beginPath(); ctx.moveTo(xx, y(k.h)); ctx.lineTo(xx, y(k.l)); ctx.stroke();
+      const top = y(Math.max(k.o, k.c)), bot = y(Math.min(k.o, k.c));
+      ctx.fillRect(Math.round(x - bw / 2), top, bw, Math.max(1, bot - top));
+    }
+
+    // 이동평균선
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, PAD.top, plotW, priceH); ctx.clip();
+    ctx.lineWidth = 1.5; ctx.lineJoin = "round";
+    for (const m of MAS) {
+      if (!m.on || !m.v) continue;
+      ctx.strokeStyle = m.c;
+      ctx.beginPath();
+      let started = false;
+      for (let i = start; i < end; i++) {
+        const v = m.v[i];
+        if (v == null) continue;
+        const x = (i - start + 0.5) * slot;
+        if (!started) { ctx.moveTo(x, y(v)); started = true; } else ctx.lineTo(x, y(v));
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // 시간 축
+    const every = Math.max(1, Math.ceil(72 / slot));
+    ctx.fillStyle = col.muted; ctx.textAlign = "center";
+    for (let i = start; i < end; i++) {
+      if ((end - 1 - i) % every !== 0) continue;
+      const x = (i - start + 0.5) * slot;
+      if (x < 16 || x > plotW - 16) continue;
+      ctx.fillText(dateShort(candles[i].t), x, H - PAD.bottom / 2 + 2);
+    }
+
+    // 현재가 선
+    const lastK = candles[n - 1];
+    if (end === n && lastK.c >= min && lastK.c <= max) {
+      const color = col[trendName] || col.even;
+      const yy = Math.round(y(lastK.c)) + 0.5;
+      ctx.setLineDash([3, 3]); ctx.strokeStyle = color; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(plotW, yy); ctx.stroke();
+      ctx.setLineDash([]);
+      axisTag(fmtAxis(lastK.c), yy, color, "#fff");
+    }
+
+    // 십자선
+    if (hover && hover.idx >= start && hover.idx < end) {
+      const x = Math.round((hover.idx - start + 0.5) * slot) + 0.5;
+      ctx.setLineDash([4, 4]); ctx.strokeStyle = col.muted; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, PAD.top); ctx.lineTo(x, volBottom); ctx.stroke();
+      if (hover.y >= PAD.top && hover.y <= PAD.top + priceH) {
+        ctx.beginPath(); ctx.moveTo(0, hover.y); ctx.lineTo(plotW, hover.y); ctx.stroke();
+        ctx.setLineDash([]);
+        const p = max - ((hover.y - PAD.top) / priceH) * (max - min);
+        axisTag(fmtAxis(p), hover.y, col.ink, col.panel);
+      }
+      ctx.setLineDash([]);
+    }
+
+    function axisTag(text, yy, bg, fg) {
+      const tw = PAD.right - 4;
+      ctx.fillStyle = bg;
+      ctx.fillRect(plotW + 2, yy - 9, tw, 18);
+      ctx.fillStyle = fg; ctx.textAlign = "left";
+      ctx.fillText(text, plotW + 6, yy);
+    }
+  }
+
+  function updateInfo() {
+    if (!candles.length) { el.info.innerHTML = ""; return; }
+    const i = hover ? hover.idx : candles.length - 1;
+    const k = candles[i];
+    if (!k) return;
+    const prev = candles[i - 1];
+    const chg = prev ? ((k.c - prev.c) / prev.c) * 100 : null;
+    const cls = k.c > k.o ? "up" : k.c < k.o ? "down" : "";
+    let h = "<span>" + TF_LABEL[tf] + " <b>" + dateFull(k.t) + "</b></span>" +
+      '<span class="' + cls + '">시가 <b>' + fmtP(k.o) + "</b></span>" +
+      '<span class="up">고가 <b>' + fmtP(k.h) + "</b></span>" +
+      '<span class="down">저가 <b>' + fmtP(k.l) + "</b></span>" +
+      '<span class="' + cls + '">종가 <b>' + fmtP(k.c) + "</b></span>";
+    if (chg !== null) {
+      h += '<span class="' + (chg > 0 ? "up" : chg < 0 ? "down" : "") + '">전봉 대비 <b>' +
+        (chg > 0 ? "+" : chg < 0 ? "−" : "") + Math.abs(chg).toFixed(2) + "%</b></span>";
+    }
+    h += "<span>거래량 <b>" + k.v.toFixed(2) + "</b></span>";
+    for (const m of MAS) {
+      if (!m.on) continue;
+      const v = m.v && m.v[i];
+      h += '<span style="color:' + m.c + '">MA' + m.p + " <b>" + (v ? fmtP(v) : "–") + "</b></span>";
+    }
+    el.info.innerHTML = h;
+  }
+
+  /* 조작: 탭 / 확대·축소 / 이동평균 토글 / 드래그 이동 / 십자선 */
+  for (const b of document.querySelectorAll(".tabs button")) {
+    b.addEventListener("click", () => { if (b.dataset.tf !== tf) load(b.dataset.tf); });
+  }
+  function zoom(dir) {
+    const cur = ZOOM_STEPS.indexOf(view.count);
+    const idx = Math.max(0, Math.min(ZOOM_STEPS.length - 1, (cur < 0 ? 3 : cur) + dir));
+    view.count = ZOOM_STEPS[idx];
+    schedule();
+  }
+  $("zin").addEventListener("click", () => zoom(-1));
+  $("zout").addEventListener("click", () => zoom(1));
+
+  for (const m of MAS) {
+    const label = document.createElement("label");
+    label.className = "chip";
+    label.style.color = m.c;
+    const input = document.createElement("input");
+    input.type = "checkbox"; input.checked = m.on; input.style.accentColor = m.c;
+    input.addEventListener("change", () => { m.on = input.checked; schedule(); });
+    label.append(input, document.createTextNode("MA" + m.p));
+    el.mas.append(label);
+  }
+
+  let drag = null;
+  function setHover(e) {
+    if (!L) return;
+    const r = el.cv.getBoundingClientRect();
+    const x = e.clientX - r.left, yy = e.clientY - r.top;
+    if (x < 0 || x > L.plotW) { hover = null; schedule(); return; }
+    let idx = L.start + Math.floor(x / L.slot);
+    idx = Math.max(L.start, Math.min(L.end - 1, idx));
+    hover = { idx, y: yy };
+    schedule();
+  }
+  el.cv.addEventListener("pointerdown", (e) => {
+    el.cv.setPointerCapture(e.pointerId);
+    drag = { x: e.clientX, off: view.offset, moved: false };
+  });
+  el.cv.addEventListener("pointermove", (e) => {
+    if (drag) {
+      const dx = e.clientX - drag.x;
+      if (Math.abs(dx) > 4) drag.moved = true;
+      if (drag.moved && L) {
+        view.offset = drag.off + Math.round(dx / L.slot);
+        hover = null;
+        schedule();
+      }
+    } else if (e.pointerType === "mouse") {
+      setHover(e);
+    }
+  });
+  el.cv.addEventListener("pointerup", (e) => {
+    if (drag && !drag.moved) setHover(e);
+    drag = null;
+  });
+  el.cv.addEventListener("pointercancel", () => { drag = null; });
+  el.cv.addEventListener("pointerleave", (e) => {
+    if (e.pointerType === "mouse") { hover = null; schedule(); }
+  });
+
+  window.addEventListener("resize", resize);
+  if ("ResizeObserver" in window) new ResizeObserver(resize).observe(el.wrap);
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", schedule);
+
+  // 5분마다 캔들을 새로 받아 새 봉 생성/보정
+  setInterval(() => load(tf, true), 5 * 60 * 1000);
+
+  resize();
+  load("days");
   connect();
 })();
 </script>
